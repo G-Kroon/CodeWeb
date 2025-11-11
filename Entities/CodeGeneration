@@ -1,0 +1,152 @@
+{
+  "name": "CodeGeneration",
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "User's description of what code to generate"
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "HTML, CSS & JavaScript",
+        "React & Tailwind CSS"
+      ],
+      "description": "Programming language/framework selected"
+    },
+    "generated_code": {
+      "type": "string",
+      "description": "The AI-generated code"
+    },
+    "files": {
+      "type": "array",
+      "description": "Generated code split into separate files",
+      "items": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "code_review": {
+      "type": "object",
+      "description": "AI code review results",
+      "properties": {
+        "bugs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "security_issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "performance_issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "documentation": {
+      "type": "string",
+      "description": "Generated documentation (README or API docs)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "generated",
+        "purchased"
+      ],
+      "default": "draft",
+      "description": "Generation status"
+    },
+    "purchase_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the code was purchased"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email of the purchaser"
+    }
+  },
+  "required": [
+    "prompt",
+    "language"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$ne": "guest"
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "$and": [
+            {
+              "user_email": "{{user.email}}"
+            },
+            {
+              "status": "purchased"
+            }
+          ]
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}
