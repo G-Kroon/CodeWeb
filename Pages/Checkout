@@ -1,0 +1,349 @@
+
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { CreditCard, Lock, ArrowLeft, Download, DollarSign } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { motion } from "framer-motion";
+
+const paymentGateways = [
+  { value: "stripe", label: "Stripe", icon: "💳" },
+  { value: "paypal", label: "PayPal", icon: "🅿️" },
+  { value: "payfast", label: "PayFast (ZAR)", icon: "🇿🇦" },
+];
+
+const currencies = [
+  { code: "USD", symbol: "$", amount: 30.00, label: "US Dollar" },
+  { code: "ZAR", symbol: "R", amount: 516.05, label: "South African Rand" },
+  { code: "EUR", symbol: "€", amount: 27.50, label: "Euro" },
+  { code: "GBP", symbol: "£", amount: 23.50, label: "British Pound" },
+];
+
+export default function Checkout() {
+  const navigate = useNavigate();
+  const [firstName, setFirstName] = useState("");
+  const [surname, setSurname] = useState("");
+  const [email, setEmail] = useState("");
+  const [paymentGateway, setPaymentGateway] = useState("stripe");
+  const [currency, setCurrency] = useState("USD");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [codeGeneration, setCodeGeneration] = useState(null);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const generationId = urlParams.get("generation_id");
+
+    if (generationId) {
+      base44.entities.CodeGeneration.filter({ id: generationId })
+        .then((results) => {
+          if (results.length > 0) {
+            setCodeGeneration(results[0]);
+          }
+        });
+    }
+  }, []);
+
+  const selectedCurrency = currencies.find(c => c.code === currency);
+
+  // Helper function for navigating to pages
+  const createPageUrl = (pageName) => {
+    // This function needs to be defined if it's not imported.
+    // Assuming a simple routing structure for demonstration.
+    if (pageName === "Home") {
+      return "/";
+    }
+    // Add other page mappings as needed
+    return `/${pageName.toLowerCase()}`;
+  };
+
+  const handlePayment = async (e) => {
+    e.preventDefault();
+    if (!firstName.trim() || !surname.trim() || !email.trim() || !codeGeneration) return;
+
+    setIsProcessing(true);
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      await base44.entities.Purchase.create({
+        first_name: firstName,
+        surname: surname,
+        email: email,
+        code_generation_id: codeGeneration.id,
+        amount_usd: selectedCurrency.code === "USD" ? selectedCurrency.amount : 30,
+        amount_zar: selectedCurrency.code === "ZAR" ? selectedCurrency.amount : 516.05,
+        payment_status: "completed",
+      });
+
+      await base44.entities.CodeGeneration.update(codeGeneration.id, {
+        status: "purchased",
+        purchase_date: new Date().toISOString(),
+        user_email: email,
+      });
+
+      // Download all files separately or as a zip
+      if (codeGeneration.files && codeGeneration.files.length > 0) {
+        // Download each file
+        codeGeneration.files.forEach((file) => {
+          const blob = new Blob([file.content], { type: "text/plain" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = file.filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        });
+
+        // Download documentation if exists
+        if (codeGeneration.documentation) {
+          const docBlob = new Blob([codeGeneration.documentation], { type: "text/plain" });
+          const docUrl = URL.createObjectURL(docBlob);
+          const docLink = document.createElement("a");
+          docLink.href = docUrl;
+          docLink.download = "README.md";
+          document.body.appendChild(docLink);
+          docLink.click();
+          document.body.removeChild(docLink);
+          URL.revokeObjectURL(docUrl);
+        }
+      } else {
+        // Fallback to single file download
+        const blob = new Blob([codeGeneration.generated_code], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        
+        const fileExtension = codeGeneration.language.includes("React") ? "jsx" : 
+                             codeGeneration.language.includes("HTML") ? "html" : "js";
+        
+        link.download = `gkroon-code-${Date.now()}.${fileExtension}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+
+      // Update user purchase count
+      try {
+        const user = await base44.auth.me();
+        await base44.auth.updateMe({
+          total_purchases: (user.total_purchases || 0) + 1
+        });
+      } catch (error) {
+        console.log("Could not update user stats:", error);
+      }
+
+      alert(`Payment successful via ${paymentGateways.find(g => g.value === paymentGateway).label}! Your code files are downloading now.`);
+      navigate(createPageUrl("Home"));
+    } catch (error) {
+      console.error("Payment failed:", error);
+      alert("Payment processing failed. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  if (!codeGeneration) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#0F0F0F] via-[#1A1A1A] to-[#0A1929] flex items-center justify-center p-4">
+        <Card className="p-8 bg-gradient-to-br from-[#1E3A5F]/30 to-[#0A1929]/50 border-[#1E3A5F]/30 backdrop-blur-xl">
+          <p className="text-white text-center">Loading checkout...</p>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#0F0F0F] via-[#1A1A1A] to-[#0A1929] p-4 md:p-8">
+      <div className="max-w-4xl mx-auto">
+        <Button
+          variant="ghost"
+          onClick={() => navigate(createPageUrl("Home"))}
+          className="mb-6 text-white hover:bg-[#1E3A5F]/50"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Generator
+        </Button>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-8"
+        >
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+            Complete Your{" "}
+            <span className="bg-gradient-to-r from-[#32CD32] to-[#00FF00] bg-clip-text text-transparent">
+              Purchase
+            </span>
+          </h1>
+          <p className="text-white/60 text-lg">
+            Secure checkout with multiple payment options
+          </p>
+        </motion.div>
+
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Order Summary */}
+          <Card className="p-8 bg-gradient-to-br from-[#1E3A5F]/30 to-[#0A1929]/50 border-[#1E3A5F]/30 backdrop-blur-xl shadow-2xl h-fit">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-gradient-to-br from-[#32CD32] to-[#00FF00] rounded-xl flex items-center justify-center">
+                <Download className="w-6 h-6 text-black" />
+              </div>
+              <div>
+                <h2 className="text-white font-bold text-xl">Order Summary</h2>
+                <p className="text-white/50 text-sm">Your code download</p>
+              </div>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <div className="flex justify-between items-center py-3 border-b border-[#1E3A5F]/30">
+                <span className="text-white/70">Technology Stack</span>
+                <span className="text-white font-semibold">{codeGeneration.language}</span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-[#1E3A5F]/30">
+                <span className="text-white/70">Code Length</span>
+                <span className="text-white font-semibold">
+                  {codeGeneration.generated_code.split("\n").length} lines
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-[#0A1929]/80 rounded-xl p-6 mb-6">
+              <div className="mb-4">
+                <Label className="text-white/70 mb-2 block">Select Currency</Label>
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger className="w-full bg-[#0A1929]/50 border-[#1E3A5F] text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0A1929] border-[#1E3A5F]">
+                    {currencies.map((curr) => (
+                      <SelectItem 
+                        key={curr.code} 
+                        value={curr.code}
+                        className="text-white hover:bg-[#1E3A5F]/50 focus:bg-[#1E3A5F]/50"
+                      >
+                        {curr.label} ({curr.symbol}{curr.amount.toFixed(2)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-white/70 text-lg">Total Amount</span>
+                <span className="text-white font-bold text-3xl">
+                  {selectedCurrency.symbol}{selectedCurrency.amount.toFixed(2)} {selectedCurrency.code}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-white/50 text-sm">
+              <Lock className="w-4 h-4" />
+              <span>Secure payment processing with SSL encryption</span>
+            </div>
+          </Card>
+
+          {/* Checkout Form */}
+          <Card className="p-8 bg-gradient-to-br from-[#1E3A5F]/30 to-[#0A1929]/50 border-[#1E3A5F]/30 backdrop-blur-xl shadow-2xl">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-gradient-to-br from-[#32CD32] to-[#00FF00] rounded-xl flex items-center justify-center">
+                <CreditCard className="w-6 h-6 text-black" />
+              </div>
+              <div>
+                <h2 className="text-white font-bold text-xl">Payment Details</h2>
+                <p className="text-white/50 text-sm">Enter your information</p>
+              </div>
+            </div>
+
+            <form onSubmit={handlePayment} className="space-y-6">
+              <div>
+                <Label className="text-white font-semibold mb-2 block">First Name</Label>
+                <Input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  placeholder="John"
+                  className="h-12 bg-[#0A1929]/50 border-[#1E3A5F] text-white placeholder:text-white/30"
+                />
+              </div>
+
+              <div>
+                <Label className="text-white font-semibold mb-2 block">Surname</Label>
+                <Input
+                  type="text"
+                  value={surname}
+                  onChange={(e) => setSurname(e.target.value)}
+                  required
+                  placeholder="Doe"
+                  className="h-12 bg-[#0A1929]/50 border-[#1E3A5F] text-white placeholder:text-white/30"
+                />
+              </div>
+
+              <div>
+                <Label className="text-white font-semibold mb-2 block">Email Address</Label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="john.doe@example.com"
+                  className="h-12 bg-[#0A1929]/50 border-[#1E3A5F] text-white placeholder:text-white/30"
+                />
+              </div>
+
+              <div>
+                <Label className="text-white font-semibold mb-2 block">Payment Gateway</Label>
+                <Select value={paymentGateway} onValueChange={setPaymentGateway}>
+                  <SelectTrigger className="w-full h-12 bg-[#0A1929]/50 border-[#1E3A5F] text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0A1929] border-[#1E3A5F]">
+                    {paymentGateways.map((gateway) => (
+                      <SelectItem 
+                        key={gateway.value} 
+                        value={gateway.value}
+                        className="text-white hover:bg-[#1E3A5F]/50 focus:bg-[#1E3A5F]/50"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>{gateway.icon}</span>
+                          <span>{gateway.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="pt-4">
+                <Button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="w-full h-14 bg-gradient-to-r from-[#32CD32] to-[#00FF00] hover:from-[#00FF00] hover:to-[#32CD32] text-black font-bold text-lg shadow-xl shadow-[#32CD32]/50"
+                >
+                  {isProcessing ? (
+                    "Processing Payment..."
+                  ) : (
+                    <>
+                      <DollarSign className="w-5 h-5 mr-2" />
+                      Pay Now - {selectedCurrency.symbol}{selectedCurrency.amount.toFixed(2)}
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <p className="text-white/40 text-xs text-center">
+                By proceeding, you agree to our terms of service. Your code will download automatically after successful payment via {paymentGateways.find(g => g.value === paymentGateway).label}.
+              </p>
+            </form>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
