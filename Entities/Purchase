@@ -1,0 +1,97 @@
+{
+  "name": "Purchase",
+  "type": "object",
+  "properties": {
+    "first_name": {
+      "type": "string",
+      "description": "Customer's first name"
+    },
+    "surname": {
+      "type": "string",
+      "description": "Customer's surname"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Customer's email address"
+    },
+    "code_generation_id": {
+      "type": "string",
+      "description": "Reference to the code generation"
+    },
+    "amount_usd": {
+      "type": "number",
+      "default": 30,
+      "description": "Amount in USD"
+    },
+    "amount_zar": {
+      "type": "number",
+      "default": 516.05,
+      "description": "Amount in South African Rand"
+    },
+    "payment_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "completed",
+        "failed"
+      ],
+      "default": "pending",
+      "description": "Payment status"
+    }
+  },
+  "required": [
+    "first_name",
+    "surname",
+    "email",
+    "code_generation_id"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$ne": "guest"
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}
