@@ -1,0 +1,84 @@
+{
+  "name": "SavedCode",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "User-defined title for the saved code"
+    },
+    "code_generation_id": {
+      "type": "string",
+      "description": "Reference to the CodeGeneration entity"
+    },
+    "language": {
+      "type": "string",
+      "description": "Programming language/framework"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for organizing code snippets"
+    },
+    "notes": {
+      "type": "string",
+      "description": "User notes about this code"
+    },
+    "is_favorite": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this code is marked as favorite"
+    }
+  },
+  "required": [
+    "title",
+    "code_generation_id",
+    "language"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$ne": "guest"
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}
