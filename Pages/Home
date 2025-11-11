@@ -1,0 +1,820 @@
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { Sparkles, Download, AlertTriangle, Loader2, Code, FileCode, BookOpen, Wand2, Shield, Folder, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Card } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { motion } from "framer-motion";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+
+const languages = [
+  { value: "HTML, CSS & JavaScript", label: "HTML, CSS & JavaScript", desc: "Complete Web Development" },
+  { value: "React & Tailwind CSS", label: "React & Tailwind CSS", desc: "Modern Framework & Styling" },
+];
+
+const projectTypes = [
+  { value: "single", label: "Single Component", desc: "Generate a single feature" },
+  { value: "boilerplate", label: "Boilerplate Project", desc: "Complete project structure" },
+];
+
+const documentationTypes = [
+  { value: "none", label: "No Documentation" },
+  { value: "readme", label: "README.md" },
+  { value: "api", label: "API Documentation" },
+  { value: "both", label: "README + API Docs" },
+];
+
+export default function Home() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [prompt, setPrompt] = useState("");
+  const [language, setLanguage] = useState("");
+  const [projectType, setProjectType] = useState("single");
+  const [generatedFiles, setGeneratedFiles] = useState([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationId, setGenerationId] = useState(null);
+  const [includeTests, setIncludeTests] = useState(false);
+  const [includeDocumentation, setIncludeDocumentation] = useState(false);
+  const [documentationType, setDocumentationType] = useState("none");
+  const [refactorPrompt, setRefactorPrompt] = useState("");
+  const [isRefactoring, setIsRefactoring] = useState(false);
+  const [showRefactor, setShowRefactor] = useState(false);
+  const [codeReview, setCodeReview] = useState(null);
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [activeTab, setActiveTab] = useState("code");
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveTitle, setSaveTitle] = useState("");
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  const loadUser = async () => {
+    try {
+      const currentUser = await base44.auth.me();
+      setUser(currentUser);
+      
+      if (currentUser.preferences?.default_language) {
+        setLanguage(currentUser.preferences.default_language);
+      }
+      if (currentUser.preferences?.auto_generate_tests) {
+        setIncludeTests(true);
+      }
+      if (currentUser.preferences?.auto_generate_docs) {
+        setIncludeDocumentation(true);
+      }
+    } catch (error) {
+      console.log("User not logged in");
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!prompt.trim() || !language) return;
+
+    setIsGenerating(true);
+    setGeneratedFiles([]);
+    setShowRefactor(false);
+    setCodeReview(null);
+
+    try {
+      let detailedPrompt = `You are an expert ${language} developer. `;
+
+      if (projectType === "boilerplate") {
+        detailedPrompt += `Generate a complete boilerplate project structure for: "${prompt}". `;
+      } else {
+        detailedPrompt += `Generate extremely detailed, production-ready, well-commented ${language} code based on this request: "${prompt}". `;
+      }
+
+      detailedPrompt += `\n\nRequirements:
+- Include extensive comments explaining the code
+- Follow best practices and modern standards
+- Make the code clean, readable, and maintainable
+- Include proper error handling where applicable
+- For React: use functional components with hooks
+- For Tailwind CSS: use utility classes effectively`;
+
+      if (includeDocumentation) {
+        detailedPrompt += `\n- Add comprehensive JSDoc documentation for all functions, explaining parameters, return values, and purpose`;
+      }
+
+      detailedPrompt += `\n\nIMPORTANT: Split the code into separate files. For each file, provide:
+FILE: filename.ext
+CONTENT:
+[file content here]
+
+`;
+
+      if (language === "HTML, CSS & JavaScript") {
+        detailedPrompt += `Generate separate files: index.html, styles.css, script.js (and any additional files needed)`;
+      } else {
+        detailedPrompt += `Generate separate files: Component.jsx, Component.module.css or inline Tailwind (and any additional files needed)`;
+      }
+
+      if (includeTests) {
+        if (language === "React & Tailwind CSS") {
+          detailedPrompt += `\n\nGenerate comprehensive Jest unit tests with React Testing Library in a separate test file. Cover:
+- Component rendering tests
+- User interaction tests
+- Edge cases and error handling`;
+        } else {
+          detailedPrompt += `\n\nGenerate comprehensive unit tests in a separate test file. Cover:
+- Function behavior tests
+- Edge cases and error handling
+- Input validation tests`;
+        }
+      }
+
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: detailedPrompt,
+      });
+
+      // Parse files from result
+      const files = parseFilesFromResponse(result);
+
+      // Generate documentation if requested
+      let documentation = null;
+      if (documentationType !== "none") {
+        documentation = await generateDocumentation(files, prompt, language, documentationType);
+      }
+
+      const codeGeneration = await base44.entities.CodeGeneration.create({
+        prompt,
+        language,
+        generated_code: result,
+        files: files,
+        documentation: documentation,
+        status: "generated",
+      });
+
+      setGeneratedFiles(files);
+      setGenerationId(codeGeneration.id);
+      setShowRefactor(true);
+
+      // Update user stats
+      if (user) {
+        await base44.auth.updateMe({
+          total_generations: (user.total_generations || 0) + 1
+        });
+      }
+
+      // Auto-review code
+      reviewCode(files);
+    } catch (error) {
+      console.error("Generation failed:", error);
+      alert("Failed to generate code. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const parseFilesFromResponse = (response) => {
+    const files = [];
+    const fileRegex = /FILE:\s*(.+?)\s*\nCONTENT:\s*\n([\s\S]*?)(?=\n\nFILE:|$)/g;
+    let match;
+
+    while ((match = fileRegex.exec(response)) !== null) {
+      const filename = match[1].trim();
+      const content = match[2].trim();
+      const extension = filename.split('.').pop();
+      
+      files.push({
+        filename: filename,
+        content: content,
+        language: extension
+      });
+    }
+
+    // If no files found, create a single file
+    if (files.length === 0) {
+      files.push({
+        filename: language.includes("React") ? "Component.jsx" : "index.html",
+        content: response,
+        language: language.includes("React") ? "jsx" : "html"
+      });
+    }
+
+    return files;
+  };
+
+  const generateDocumentation = async (files, prompt, language, docType) => {
+    const filesSummary = files.map(f => `${f.filename}: ${f.content.split('\n').length} lines`).join('\n');
+    
+    let docPrompt = `Generate professional documentation for the following code project:
+
+Project Description: ${prompt}
+Technology: ${language}
+Files:
+${filesSummary}
+
+`;
+
+    if (docType === "readme" || docType === "both") {
+      docPrompt += `Create a comprehensive README.md that includes:
+- Project title and description
+- Features
+- Installation instructions
+- Usage examples
+- File structure explanation
+- Technologies used
+- Contributing guidelines
+`;
+    }
+
+    if (docType === "api" || docType === "both") {
+      docPrompt += `\n\nAlso create API documentation that includes:
+- All functions/components with descriptions
+- Parameters and return values
+- Usage examples
+- Code snippets
+`;
+    }
+
+    const docResult = await base44.integrations.Core.InvokeLLM({
+      prompt: docPrompt,
+    });
+
+    return docResult;
+  };
+
+  const reviewCode = async (files) => {
+    setIsReviewing(true);
+    setActiveTab("review");
+
+    try {
+      const codeForReview = files.map(f => `${f.filename}:\n${f.content}`).join('\n\n');
+
+      const reviewPrompt = `You are an expert code reviewer. Analyze the following code and identify:
+
+${codeForReview}
+
+Provide a JSON response with the following structure:
+{
+  "bugs": ["list of potential bugs"],
+  "security_issues": ["list of security vulnerabilities"],
+  "performance_issues": ["list of performance bottlenecks"],
+  "suggestions": ["list of improvement suggestions"]
+}
+
+Be specific and actionable in your feedback.`;
+
+      const review = await base44.integrations.Core.InvokeLLM({
+        prompt: reviewPrompt,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            bugs: { type: "array", items: { type: "string" } },
+            security_issues: { type: "array", items: { type: "string" } },
+            performance_issues: { type: "array", items: { type: "string" } },
+            suggestions: { type: "array", items: { type: "string" } }
+          }
+        }
+      });
+
+      setCodeReview(review);
+
+      // Save review to database
+      await base44.entities.CodeGeneration.update(generationId, {
+        code_review: review
+      });
+    } catch (error) {
+      console.error("Review failed:", error);
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  const handleRefactor = async () => {
+    if (!refactorPrompt.trim() || generatedFiles.length === 0) return;
+
+    setIsRefactoring(true);
+
+    try {
+      const codeForRefactor = generatedFiles.map(f => `${f.filename}:\n${f.content}`).join('\n\n');
+
+      const refactorRequest = `You are an expert code refactoring assistant. Here is the current code:
+
+${codeForRefactor}
+
+User's refactoring request: "${refactorPrompt}"
+
+Please provide the refactored version maintaining the same file structure. Use the FILE: and CONTENT: format for each file.`;
+
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: refactorRequest,
+      });
+
+      const newFiles = parseFilesFromResponse(result);
+
+      await base44.entities.CodeGeneration.update(generationId, {
+        generated_code: result,
+        files: newFiles,
+      });
+
+      setGeneratedFiles(newFiles);
+      setRefactorPrompt("");
+      alert("Code refactored successfully!");
+      
+      // Re-review after refactoring
+      reviewCode(newFiles);
+    } catch (error) {
+      console.error("Refactoring failed:", error);
+      alert("Failed to refactor code. Please try again.");
+    } finally {
+      setIsRefactoring(false);
+    }
+  };
+
+  const handleSaveCode = async () => {
+    if (!saveTitle.trim() || !generationId) return;
+
+    try {
+      await base44.entities.SavedCode.create({
+        title: saveTitle,
+        code_generation_id: generationId,
+        language: language,
+        tags: [],
+        notes: "",
+        is_favorite: false,
+      });
+
+      alert("Code saved successfully!");
+      setShowSaveDialog(false);
+      setSaveTitle("");
+    } catch (error) {
+      console.error("Save failed:", error);
+      alert("Failed to save code. Please try again.");
+    }
+  };
+
+  const handleDownload = () => {
+    if (generationId) {
+      navigate(createPageUrl("Checkout") + `?generation_id=${generationId}`);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#0F0F0F] via-[#1A1A1A] to-[#0A1929] p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <Alert className="mb-8 bg-gradient-to-r from-[#DC2626]/10 to-[#DC2626]/5 border-[#DC2626] backdrop-blur-sm">
+          <AlertTriangle className="h-5 w-5 text-[#DC2626]" />
+          <AlertDescription className="text-white/90 font-medium">
+            <span className="text-[#DC2626] font-bold">Important:</span> Always test AI-generated code thoroughly before deploying to production.
+          </AlertDescription>
+        </Alert>
+
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-12"
+        >
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-[#32CD32]/20 to-[#00FF00]/20 border border-[#32CD32]/30 mb-6">
+            <Sparkles className="w-4 h-4 text-[#32CD32]" />
+            <span className="text-[#32CD32] text-sm font-semibold">AI-Powered Code Generation</span>
+          </div>
+          <h1 className="text-5xl md:text-7xl font-bold text-white mb-4 tracking-tight">
+            Generate{" "}
+            <span className="bg-gradient-to-r from-[#32CD32] to-[#00FF00] bg-clip-text text-transparent">
+              Professional Code
+            </span>
+          </h1>
+          <p className="text-xl text-white/60 max-w-2xl mx-auto">
+            Complete code generation with tests, documentation, and AI review
+          </p>
+        </motion.div>
+
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Input Section */}
+          <Card className="p-8 bg-gradient-to-br from-[#1E3A5F]/30 to-[#0A1929]/50 border-[#1E3A5F]/30 backdrop-blur-xl shadow-2xl">
+            <div className="space-y-6">
+              <div>
+                <label className="block text-white font-semibold mb-3 text-lg">
+                  Project Type
+                </label>
+                <Select value={projectType} onValueChange={setProjectType}>
+                  <SelectTrigger className="w-full h-14 bg-[#0A1929]/50 border-[#1E3A5F] text-white text-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0A1929] border-[#1E3A5F]">
+                    {projectTypes.map((type) => (
+                      <SelectItem 
+                        key={type.value} 
+                        value={type.value}
+                        className="text-white hover:bg-[#1E3A5F]/50 focus:bg-[#1E3A5F]/50 cursor-pointer"
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-semibold">{type.label}</span>
+                          <span className="text-xs text-white/50">{type.desc}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="block text-white font-semibold mb-3 text-lg">
+                  Technology Stack
+                </label>
+                <Select value={language} onValueChange={setLanguage}>
+                  <SelectTrigger className="w-full h-14 bg-[#0A1929]/50 border-[#1E3A5F] text-white text-lg">
+                    <SelectValue placeholder="Choose your technology..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0A1929] border-[#1E3A5F]">
+                    {languages.map((lang) => (
+                      <SelectItem 
+                        key={lang.value} 
+                        value={lang.value}
+                        className="text-white hover:bg-[#1E3A5F]/50 focus:bg-[#1E3A5F]/50 cursor-pointer"
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-semibold">{lang.label}</span>
+                          <span className="text-xs text-white/50">{lang.desc}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="block text-white font-semibold mb-3 text-lg">
+                  Describe Your Project
+                </label>
+                <Textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="E.g., Create a responsive todo app with add, delete, and mark as complete features..."
+                  className="min-h-[150px] bg-[#0A1929]/50 border-[#1E3A5F] text-white placeholder:text-white/30 text-base resize-none"
+                />
+              </div>
+
+              <div className="space-y-3 bg-[#0A1929]/30 rounded-xl p-4 border border-[#1E3A5F]/30">
+                <div className="flex items-center space-x-3">
+                  <Checkbox 
+                    id="tests" 
+                    checked={includeTests}
+                    onCheckedChange={setIncludeTests}
+                    className="border-[#32CD32]"
+                  />
+                  <Label htmlFor="tests" className="text-white cursor-pointer flex items-center gap-2">
+                    <FileCode className="w-4 h-4 text-[#32CD32]" />
+                    Generate Unit Tests
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Checkbox 
+                    id="docs" 
+                    checked={includeDocumentation}
+                    onCheckedChange={setIncludeDocumentation}
+                    className="border-[#32CD32]"
+                  />
+                  <Label htmlFor="docs" className="text-white cursor-pointer flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-[#32CD32]" />
+                    Add JSDoc Documentation
+                  </Label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-white font-semibold mb-3">
+                  Documentation Type
+                </label>
+                <Select value={documentationType} onValueChange={setDocumentationType}>
+                  <SelectTrigger className="w-full bg-[#0A1929]/50 border-[#1E3A5F] text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0A1929] border-[#1E3A5F]">
+                    {documentationTypes.map((type) => (
+                      <SelectItem 
+                        key={type.value} 
+                        value={type.value}
+                        className="text-white hover:bg-[#1E3A5F]/50 focus:bg-[#1E3A5F]/50"
+                      >
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || !language || isGenerating}
+                className="w-full h-14 bg-gradient-to-r from-[#32CD32] to-[#00FF00] hover:from-[#00FF00] hover:to-[#32CD32] text-black font-bold text-lg shadow-xl shadow-[#32CD32]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Generating Your Code...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    Generate Code
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
+
+          {/* Output Section */}
+          <Card className="p-8 bg-gradient-to-br from-[#1E3A5F]/30 to-[#0A1929]/50 border-[#1E3A5F]/30 backdrop-blur-xl shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-bold text-xl">Generated Code</h3>
+              {generatedFiles.length > 0 && (
+                <div className="flex gap-2">
+                  {user && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSaveDialog(true)}
+                      className="border-[#1E3A5F] bg-[#0A1929]/50 hover:bg-[#1E3A5F]/50 text-white"
+                    >
+                      <Save className="w-4 h-4 mr-1" />
+                      Save
+                    </Button>
+                  )}
+                  <Button
+                    onClick={handleDownload}
+                    className="bg-gradient-to-r from-[#32CD32] to-[#00FF00] hover:from-[#00FF00] hover:to-[#32CD32] text-black font-bold shadow-lg shadow-[#32CD32]/50"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download - $30
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-3 bg-[#0A1929]/50">
+                <TabsTrigger value="code" className="data-[state=active]:bg-[#1E3A5F]">
+                  <Code className="w-4 h-4 mr-2" />
+                  Code
+                </TabsTrigger>
+                <TabsTrigger value="review" className="data-[state=active]:bg-[#1E3A5F]">
+                  <Shield className="w-4 h-4 mr-2" />
+                  Review
+                </TabsTrigger>
+                <TabsTrigger value="docs" className="data-[state=active]:bg-[#1E3A5F]">
+                  <BookOpen className="w-4 h-4 mr-2" />
+                  Docs
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="code" className="mt-4">
+                <div 
+                  className="min-h-[400px] bg-[#0A1929]/80 rounded-xl border border-[#1E3A5F]/50 overflow-auto select-none"
+                  style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none' }}
+                  onCopy={(e) => e.preventDefault()}
+                  onCut={(e) => e.preventDefault()}
+                >
+                  {isGenerating ? (
+                    <div className="h-full flex items-center justify-center p-8">
+                      <div className="text-center">
+                        <Loader2 className="w-12 h-12 text-[#32CD32] animate-spin mx-auto mb-4" />
+                        <p className="text-white/60">AI is crafting your code...</p>
+                      </div>
+                    </div>
+                  ) : generatedFiles.length > 0 ? (
+                    <div className="p-6 space-y-6">
+                      {generatedFiles.map((file, index) => (
+                        <div key={index} className="space-y-2">
+                          <div className="flex items-center gap-2 pb-2 border-b border-[#1E3A5F]/30">
+                            <Folder className="w-4 h-4 text-[#32CD32]" />
+                            <span className="text-white font-semibold">{file.filename}</span>
+                            <Badge variant="outline" className="text-xs text-white/70 border-[#1E3A5F]">
+                              {file.content.split('\n').length} lines
+                            </Badge>
+                          </div>
+                          <pre className="text-sm text-white/90 font-mono whitespace-pre-wrap pointer-events-none">
+                            {file.content}
+                          </pre>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-white/40 text-center p-8">
+                      <div>
+                        <Code className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                        <p>Your generated code will appear here</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="review" className="mt-4">
+                <div className="min-h-[400px] bg-[#0A1929]/80 rounded-xl border border-[#1E3A5F]/50 p-6">
+                  {isReviewing ? (
+                    <div className="h-full flex items-center justify-center">
+                      <div className="text-center">
+                        <Loader2 className="w-12 h-12 text-[#32CD32] animate-spin mx-auto mb-4" />
+                        <p className="text-white/60">AI is reviewing your code...</p>
+                      </div>
+                    </div>
+                  ) : codeReview ? (
+                    <div className="space-y-6">
+                      {codeReview.bugs?.length > 0 && (
+                        <div>
+                          <h4 className="text-red-400 font-bold mb-3 flex items-center gap-2">
+                            <AlertTriangle className="w-5 h-5" />
+                            Potential Bugs ({codeReview.bugs.length})
+                          </h4>
+                          <ul className="space-y-2">
+                            {codeReview.bugs.map((bug, i) => (
+                              <li key={i} className="text-white/80 text-sm pl-6 border-l-2 border-red-400">
+                                {bug}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {codeReview.security_issues?.length > 0 && (
+                        <div>
+                          <h4 className="text-orange-400 font-bold mb-3 flex items-center gap-2">
+                            <Shield className="w-5 h-5" />
+                            Security Issues ({codeReview.security_issues.length})
+                          </h4>
+                          <ul className="space-y-2">
+                            {codeReview.security_issues.map((issue, i) => (
+                              <li key={i} className="text-white/80 text-sm pl-6 border-l-2 border-orange-400">
+                                {issue}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {codeReview.performance_issues?.length > 0 && (
+                        <div>
+                          <h4 className="text-yellow-400 font-bold mb-3 flex items-center gap-2">
+                            <Wand2 className="w-5 h-5" />
+                            Performance Issues ({codeReview.performance_issues.length})
+                          </h4>
+                          <ul className="space-y-2">
+                            {codeReview.performance_issues.map((issue, i) => (
+                              <li key={i} className="text-white/80 text-sm pl-6 border-l-2 border-yellow-400">
+                                {issue}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {codeReview.suggestions?.length > 0 && (
+                        <div>
+                          <h4 className="text-[#32CD32] font-bold mb-3 flex items-center gap-2">
+                            <Sparkles className="w-5 h-5" />
+                            Suggestions ({codeReview.suggestions.length})
+                          </h4>
+                          <ul className="space-y-2">
+                            {codeReview.suggestions.map((suggestion, i) => (
+                              <li key={i} className="text-white/80 text-sm pl-6 border-l-2 border-[#32CD32]">
+                                {suggestion}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {!codeReview.bugs?.length && !codeReview.security_issues?.length && 
+                       !codeReview.performance_issues?.length && codeReview.suggestions?.length === 0 && (
+                        <div className="text-center text-white/60 py-8">
+                          <Shield className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                          <p>No issues found! Your code looks good.</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-white/40 text-center">
+                      <div>
+                        <Shield className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                        <p>Generate code to see AI review</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="docs" className="mt-4">
+                <div 
+                  className="min-h-[400px] bg-[#0A1929]/80 rounded-xl border border-[#1E3A5F]/50 p-6 overflow-auto select-none"
+                  style={{ userSelect: 'none' }}
+                  onCopy={(e) => e.preventDefault()}
+                >
+                  {isGenerating ? (
+                    <div className="h-full flex items-center justify-center">
+                      <Loader2 className="w-12 h-12 text-[#32CD32] animate-spin" />
+                    </div>
+                  ) : documentationType !== "none" && generatedFiles.length > 0 ? (
+                    <pre className="text-sm text-white/90 font-mono whitespace-pre-wrap pointer-events-none">
+                      Documentation will be included in your download
+                    </pre>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-white/40 text-center">
+                      <div>
+                        <BookOpen className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                        <p>Select documentation type to generate docs</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            {showRefactor && (
+              <div className="mt-6 space-y-3 bg-[#0A1929]/50 rounded-xl p-4 border border-[#1E3A5F]/30">
+                <div className="flex items-center gap-2 text-white font-semibold">
+                  <Wand2 className="w-4 h-4 text-[#32CD32]" />
+                  AI Code Refactoring
+                </div>
+                <Textarea
+                  value={refactorPrompt}
+                  onChange={(e) => setRefactorPrompt(e.target.value)}
+                  placeholder="E.g., Improve readability, optimize performance, add error handling..."
+                  className="min-h-[80px] bg-[#0A1929]/50 border-[#1E3A5F] text-white placeholder:text-white/30 text-sm resize-none"
+                />
+                <Button
+                  onClick={handleRefactor}
+                  disabled={!refactorPrompt.trim() || isRefactoring}
+                  className="w-full bg-[#1E3A5F] hover:bg-[#1E3A5F]/80 text-white"
+                >
+                  {isRefactoring ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Refactoring...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-4 h-4 mr-2" />
+                      Refactor Code
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* Features Grid */}
+        <div className="grid md:grid-cols-5 gap-6 mt-12">
+          {[
+            { title: "Multi-File", desc: "Separate file generation", icon: "📁" },
+            { title: "AI Review", desc: "Automated code analysis", icon: "🔍" },
+            { title: "Documentation", desc: "README & API docs", icon: "📚" },
+            { title: "Save & Manage", desc: "User account storage", icon: "💾" },
+            { title: "Boilerplate", desc: "Full project structures", icon: "🏗️" },
+          ].map((feature, idx) => (
+            <Card 
+              key={idx}
+              className="p-6 bg-gradient-to-br from-[#1E3A5F]/20 to-[#0A1929]/30 border-[#1E3A5F]/30 backdrop-blur-sm hover:border-[#32CD32]/50 transition-all duration-300"
+            >
+              <div className="text-4xl mb-3">{feature.icon}</div>
+              <h3 className="text-white font-bold text-lg mb-2">{feature.title}</h3>
+              <p className="text-white/60 text-sm">{feature.desc}</p>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Save Dialog */}
+      <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+        <DialogContent className="bg-[#0A1929] border-[#1E3A5F]">
+          <DialogHeader>
+            <DialogTitle className="text-white">Save Code Snippet</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-white mb-2 block">Title</Label>
+              <Input
+                value={saveTitle}
+                onChange={(e) => setSaveTitle(e.target.value)}
+                placeholder="My Awesome Component"
+                className="bg-[#0A1929]/50 border-[#1E3A5F] text-white"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSaveDialog(false)} className="border-[#1E3A5F] text-white">
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCode} className="bg-gradient-to-r from-[#32CD32] to-[#00FF00] text-black">
+              <Save className="w-4 h-4 mr-2" />
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
