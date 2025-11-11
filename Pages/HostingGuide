@@ -1,0 +1,303 @@
+import React from "react";
+import { Card } from "@/components/ui/card";
+import { Cloud, Github, Globe, Zap, Server, Shield } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+const hostingOptions = [
+  {
+    name: "GitHub Pages",
+    icon: Github,
+    difficulty: "Beginner",
+    cost: "Free",
+    bestFor: "Static sites (HTML, CSS & JavaScript)",
+    color: "from-purple-500 to-pink-500",
+    steps: [
+      "Create a GitHub repository for your project",
+      "Push your code to the repository",
+      "Go to Settings > Pages in your repository",
+      "Select the branch to deploy (usually 'main')",
+      "Choose the root folder or /docs folder",
+      "Click Save and wait for deployment",
+      "Your site will be live at username.github.io/repository-name"
+    ],
+    pros: ["Completely free", "Easy setup", "Great for portfolios", "Custom domain support"],
+    cons: ["Static sites only", "Limited to public repos (free tier)", "No server-side code"],
+    url: "https://pages.github.com"
+  },
+  {
+    name: "Vercel",
+    icon: Zap,
+    difficulty: "Beginner",
+    cost: "Free tier available",
+    bestFor: "React & Tailwind CSS applications",
+    color: "from-blue-500 to-cyan-500",
+    steps: [
+      "Sign up at vercel.com with GitHub account",
+      "Click 'New Project' from dashboard",
+      "Import your GitHub repository",
+      "Configure build settings (auto-detected for React)",
+      "Click Deploy",
+      "Get instant HTTPS URL",
+      "Automatic deployments on every push"
+    ],
+    pros: ["Zero configuration", "Instant deployments", "Automatic HTTPS", "Perfect for React"],
+    cons: ["Build time limits on free tier", "Bandwidth limitations"],
+    url: "https://vercel.com"
+  },
+  {
+    name: "Netlify",
+    icon: Globe,
+    difficulty: "Beginner",
+    cost: "Free tier available",
+    bestFor: "Both stacks - HTML/CSS/JS & React/Tailwind",
+    color: "from-teal-500 to-green-500",
+    steps: [
+      "Create account at netlify.com",
+      "Drag and drop your build folder, or",
+      "Connect your Git repository",
+      "Configure build command (e.g., 'npm run build')",
+      "Set publish directory (e.g., 'build' or 'dist')",
+      "Deploy with one click",
+      "Get custom *.netlify.app URL"
+    ],
+    pros: ["Drag-and-drop deployment", "Form handling", "Serverless functions", "Split testing"],
+    cons: ["Build minutes limited", "Some features require paid plan"],
+    url: "https://netlify.com"
+  },
+  {
+    name: "Firebase Hosting",
+    icon: Server,
+    difficulty: "Intermediate",
+    cost: "Free tier available",
+    bestFor: "Web apps with backend needs",
+    color: "from-orange-500 to-red-500",
+    steps: [
+      "Create Firebase project at firebase.google.com",
+      "Install Firebase CLI: npm install -g firebase-tools",
+      "Run 'firebase login' in terminal",
+      "Run 'firebase init hosting' in project folder",
+      "Build your project",
+      "Run 'firebase deploy'",
+      "Access via Firebase-provided URL"
+    ],
+    pros: ["Fast global CDN", "Database integration", "Authentication support", "Google infrastructure"],
+    cons: ["More complex setup", "Requires Firebase CLI"],
+    url: "https://firebase.google.com"
+  },
+  {
+    name: "Cloudflare Pages",
+    icon: Shield,
+    difficulty: "Beginner",
+    cost: "Free",
+    bestFor: "Static and JAMstack sites",
+    color: "from-yellow-500 to-orange-500",
+    steps: [
+      "Sign up at pages.cloudflare.com",
+      "Connect your GitHub/GitLab account",
+      "Select repository to deploy",
+      "Configure build settings",
+      "Set build command and output directory",
+      "Deploy automatically",
+      "Benefit from Cloudflare's global CDN"
+    ],
+    pros: ["Unlimited bandwidth", "Fast global CDN", "Free SSL", "DDoS protection"],
+    cons: ["Limited build time", "Newer platform (fewer resources)"],
+    url: "https://pages.cloudflare.com"
+  },
+  {
+    name: "Surge.sh",
+    icon: Cloud,
+    difficulty: "Beginner",
+    cost: "Free",
+    bestFor: "Quick static site deployment",
+    color: "from-indigo-500 to-purple-500",
+    steps: [
+      "Install Surge: npm install -g surge",
+      "Navigate to your project directory",
+      "Build your project if needed",
+      "Run 'surge' in the build folder",
+      "Follow prompts for domain name",
+      "Your site is instantly live",
+      "Update with 'surge' command anytime"
+    ],
+    pros: ["Dead simple", "Command-line based", "Instant deployment", "Free custom domains"],
+    cons: ["Basic features only", "No automatic deployments", "Static sites only"],
+    url: "https://surge.sh"
+  }
+];
+
+const preparationSteps = {
+  "HTML, CSS & JavaScript": [
+    "Ensure all file paths are relative (not absolute)",
+    "Test all links work locally",
+    "Optimize images for web",
+    "Remove console.log statements from JavaScript",
+    "Minify CSS and JavaScript for production",
+    "Create an index.html as your entry point",
+    "Test in different browsers"
+  ],
+  "React & Tailwind CSS": [
+    "Run 'npm run build' to create production build",
+    "Deploy the 'build' folder contents",
+    "Set up environment variables if needed",
+    "Configure routing (use HashRouter for GitHub Pages)",
+    "Test the production build locally first",
+    "Ensure PostCSS is configured for Tailwind",
+    "Verify all utility classes are generated"
+  ]
+};
+
+export default function HostingGuide() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#0F0F0F] via-[#1A1A1A] to-[#0A1929] p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl bg-gradient-to-r from-[#1E3A5F]/30 to-[#0A1929]/50 border border-[#1E3A5F]/30 backdrop-blur-sm mb-6">
+            <Cloud className="w-6 h-6 text-[#32CD32]" />
+            <span className="text-white font-bold text-lg">Deployment Guide</span>
+          </div>
+          <h1 className="text-5xl md:text-6xl font-bold text-white mb-4">
+            Host Your{" "}
+            <span className="bg-gradient-to-r from-[#32CD32] to-[#00FF00] bg-clip-text text-transparent">
+              Code
+            </span>
+          </h1>
+          <p className="text-xl text-white/60 max-w-3xl mx-auto">
+            Comprehensive guide to deploying your generated code to the web. Choose the best platform for your needs.
+          </p>
+        </div>
+
+        {/* Preparation Steps */}
+        <Card className="p-8 mb-12 bg-gradient-to-br from-[#1E3A5F]/30 to-[#0A1929]/50 border-[#1E3A5F]/30 backdrop-blur-xl shadow-2xl">
+          <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <Zap className="w-8 h-8 text-[#32CD32]" />
+            Before You Deploy
+          </h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            {Object.entries(preparationSteps).map(([tech, steps]) => (
+              <div key={tech} className="bg-[#0A1929]/50 rounded-xl p-6 border border-[#1E3A5F]/30">
+                <h3 className="text-[#32CD32] font-bold text-lg mb-4">{tech}</h3>
+                <ul className="space-y-2">
+                  {steps.map((step, idx) => (
+                    <li key={idx} className="text-white/70 text-sm flex items-start gap-2">
+                      <span className="text-[#32CD32] mt-1">•</span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Hosting Options */}
+        <div className="space-y-8">
+          {hostingOptions.map((option, idx) => {
+            const IconComponent = option.icon;
+            return (
+              <Card 
+                key={idx}
+                className="overflow-hidden bg-gradient-to-br from-[#1E3A5F]/30 to-[#0A1929]/50 border-[#1E3A5F]/30 backdrop-blur-xl shadow-2xl hover:border-[#32CD32]/50 transition-all duration-300"
+              >
+                <div className={`h-2 bg-gradient-to-r ${option.color}`}></div>
+                <div className="p-8">
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between mb-6">
+                    <div className="flex items-center gap-4 mb-4 md:mb-0">
+                      <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${option.color} flex items-center justify-center shadow-xl`}>
+                        <IconComponent className="w-8 h-8 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-white font-bold text-2xl">{option.name}</h3>
+                        <p className="text-white/60">{option.bestFor}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="px-4 py-2 bg-[#32CD32]/20 border border-[#32CD32]/30 rounded-lg">
+                        <span className="text-[#32CD32] font-semibold text-sm">{option.difficulty}</span>
+                      </div>
+                      <div className="px-4 py-2 bg-[#00FF00]/20 border border-[#00FF00]/30 rounded-lg">
+                        <span className="text-[#00FF00] font-semibold text-sm">{option.cost}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid lg:grid-cols-2 gap-8">
+                    <div>
+                      <h4 className="text-white font-bold text-lg mb-4">Deployment Steps</h4>
+                      <ol className="space-y-3">
+                        {option.steps.map((step, stepIdx) => (
+                          <li key={stepIdx} className="flex items-start gap-3">
+                            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gradient-to-br from-[#32CD32] to-[#00FF00] text-black text-xs font-bold flex items-center justify-center">
+                              {stepIdx + 1}
+                            </span>
+                            <span className="text-white/80 text-sm">{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="text-white font-bold text-lg mb-3">Pros</h4>
+                        <ul className="space-y-2">
+                          {option.pros.map((pro, proIdx) => (
+                            <li key={proIdx} className="flex items-start gap-2 text-white/70 text-sm">
+                              <span className="text-[#32CD32] mt-1">✓</span>
+                              <span>{pro}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div>
+                        <h4 className="text-white font-bold text-lg mb-3">Cons</h4>
+                        <ul className="space-y-2">
+                          {option.cons.map((con, conIdx) => (
+                            <li key={conIdx} className="flex items-start gap-2 text-white/70 text-sm">
+                              <span className="text-[#DC2626] mt-1">✗</span>
+                              <span>{con}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <Button
+                        onClick={() => window.open(option.url, "_blank")}
+                        className={`w-full bg-gradient-to-r ${option.color} text-white font-bold shadow-lg hover:scale-105 transition-transform`}
+                      >
+                        Visit {option.name}
+                        <Globe className="w-4 h-4 ml-2" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Quick Tips */}
+        <Card className="mt-12 p-8 bg-gradient-to-br from-[#32CD32]/10 to-[#00FF00]/5 border-[#32CD32]/30 backdrop-blur-xl">
+          <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+            <Zap className="w-6 h-6 text-[#32CD32]" />
+            Pro Tips for Successful Deployment
+          </h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="space-y-3">
+              <p className="text-white/80">✓ Always test locally before deploying</p>
+              <p className="text-white/80">✓ Use environment variables for sensitive data</p>
+              <p className="text-white/80">✓ Enable HTTPS for production sites</p>
+              <p className="text-white/80">✓ Set up custom domains for professional look</p>
+            </div>
+            <div className="space-y-3">
+              <p className="text-white/80">✓ Monitor site performance after deployment</p>
+              <p className="text-white/80">✓ Keep your dependencies updated</p>
+              <p className="text-white/80">✓ Use CDN for faster global access</p>
+              <p className="text-white/80">✓ Set up automatic deployments from Git</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
